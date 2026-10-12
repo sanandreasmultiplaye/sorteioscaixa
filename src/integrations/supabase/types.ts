@@ -14,7 +14,86 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      lottery_state: {
+        Row: {
+          id: string
+          last_concurso: number | null
+          last_reminder: string | null
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          last_concurso?: number | null
+          last_reminder?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          last_concurso?: number | null
+          last_reminder?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      push_inbox: {
+        Row: {
+          body: string
+          created_at: string
+          endpoint: string
+          id: number
+          title: string
+          url: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          endpoint: string
+          id?: number
+          title: string
+          url?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          endpoint?: string
+          id?: number
+          title?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_inbox_endpoint_fkey"
+            columns: ["endpoint"]
+            isOneToOne: false
+            referencedRelation: "push_subscriptions"
+            referencedColumns: ["endpoint"]
+          },
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          created_at: string
+          endpoint: string
+          lotteries: string[]
+          reminders: boolean
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          lotteries?: string[]
+          reminders?: boolean
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          lotteries?: string[]
+          reminders?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
