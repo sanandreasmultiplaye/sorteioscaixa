@@ -214,7 +214,7 @@ function Generator() {
           ))}
           <button
             onClick={() => {
-              saveGames(games.map((g) => ({ lottery: lot, numbers: g.numbers, extra: g.extra })));
+              saveGames(games.map((g) => ({ lottery: lot, numbers: g.numbers, ...(g.extra ? { extra: g.extra } : {}) })));
               setSavedMsg(true);
               setTimeout(() => setSavedMsg(false), 2500);
               navigator.vibrate?.(30);
