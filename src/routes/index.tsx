@@ -275,6 +275,55 @@ function Results() {
   );
 }
 
+function NextDraws() {
+  const q = useQuery({ ...resultsQuery, staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true });
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={() => q.refetch()}
+        disabled={q.isFetching}
+        className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary font-bold text-primary-foreground disabled:opacity-60"
+      >
+        <span className={q.isFetching ? "animate-spin" : ""}>🔄</span>
+        {q.isFetching ? "Atualizando..." : "Atualizar"}
+      </button>
+      {q.isLoading && Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 animate-pulse rounded-2xl bg-muted" />)}
+      {q.isError && <p className="rounded-2xl bg-card p-4 text-center text-sm">Não foi possível carregar. Verifique sua conexão e tente novamente.</p>}
+      {q.data?.map((r) => {
+        const l = getLottery(r.id as LotteryId);
+        return (
+          <article key={r.id} className="shadow-card rounded-2xl border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="font-bold">{l.name}</h3>
+              {r.proximoConcurso && (
+                <span className="rounded-full bg-accent px-2.5 py-1 text-[11px] font-bold text-accent-foreground">
+                  Concurso {r.proximoConcurso}
+                </span>
+              )}
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between rounded-xl bg-muted px-3 py-2.5">
+                <span className="text-muted-foreground">📅 Data do sorteio</span>
+                <b>{r.proximoData ?? "Não informado"}</b>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-muted px-3 py-2.5">
+                <span className="text-muted-foreground">💰 Prêmio estimado</span>
+                <b className="text-primary">{r.proximoEstimado ? brl(r.proximoEstimado) : "Não informado"}</b>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-muted px-3 py-2.5">
+                <span className="text-muted-foreground">🕗 Horário</span>
+                <b>20h (Brasília)</b>
+              </div>
+            </div>
+            {r.acumulou && r.premio == null ? null : null}
+          </article>
+        );
+      })}
+      <p className="text-center text-[11px] text-muted-foreground">Valores estimados pela Caixa. Sorteios às 20h no Espaço da Sorte, em São Paulo.</p>
+    </div>
+  );
+}
+
 function ResultCard({ r }: { r: LotteryResult }) {
   const l = getLottery(r.id as LotteryId);
   const small = r.dezenas.length > 10;
