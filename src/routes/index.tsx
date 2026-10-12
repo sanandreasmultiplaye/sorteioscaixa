@@ -77,11 +77,13 @@ function Index() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 pt-5">{tab === "gerar" ? <Generator /> : tab === "resultados" ? <Results /> : <NextDraws />}</main>
+      <main className="flex-1 px-4 pt-5">
+        {tab === "gerar" ? <Generator /> : tab === "resultados" ? <Results /> : tab === "proximos" ? <NextDraws /> : <Checker />}
+      </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-        <div className="mx-auto grid max-w-lg grid-cols-3 gap-2 p-2">
-          {([["gerar", "🎲", "Gerar Jogos"], ["resultados", "🏆", "Resultados"], ["proximos", "📅", "Próximos"]] as const).map(([id, icon, label]) => (
+        <div className="mx-auto grid max-w-lg grid-cols-4 gap-1.5 p-2">
+          {([["gerar", "🎲", "Gerar"], ["resultados", "🏆", "Resultados"], ["proximos", "📅", "Próximos"], ["conferir", "✅", "Conferir"]] as const).map(([id, icon, label]) => (
             <button
               key={id}
               onClick={() => { setTab(id); window.scrollTo({ top: 0 }); }}
