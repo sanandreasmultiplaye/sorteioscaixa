@@ -11,6 +11,8 @@ export interface LotteryResult {
   locais: { qtd: number; local: string }[];
   acumulou: boolean;
   proximoEstimado: number | null;
+  proximoData: string | null;
+  proximoConcurso: number | null;
   premio: number | null;
   error?: string;
 }
@@ -48,6 +50,8 @@ function fromCaixa(id: string, d: Any): LotteryResult {
     locais: locaisFrom(d.listaMunicipioUFGanhadores),
     acumulou: !!d.acumulado,
     proximoEstimado: d.valorEstimadoProximoConcurso ?? null,
+    proximoData: d.dataProximoConcurso ?? null,
+    proximoConcurso: d.proximoConcurso ?? null,
     premio: faixa1.valorPremio ?? null,
   };
 }
