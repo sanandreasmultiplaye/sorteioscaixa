@@ -290,6 +290,128 @@ function Results() {
   );
 }
 
+function Checker() {
+  const [games, setGames] = useState<SavedGame[]>([]);
+  const [lot, setLot] = useState<LotteryId>("megasena");
+  const [nums, setNums] = useState("");
+  const [conc, setConc] = useState("");
+  const [addError, setAddError] = useState("");
+  const [byConcurso, setByConcurso] = useState<Record<string, LotteryResult>>({});
+  const q = useQuery(resultsQuery);
+
+  useEffect(() => { setGames(loadGames()); }, []);
+
+  // Fetch results for games pinned to a specific concurso
+  useEffect(() => {
+    const missing = games.filter((g) => g.concurso && !byConcurso[`${g.lottery}-${g.concurso}`]);
+    if (!missing.length) return;
+    missing.forEach((g) => {
+      getResultByConcurso({ data: { id: g.lottery, concurso: g.concurso! } })
+        .then((r) => setByConcurso((m) => ({ ...m, [`${g.lottery}-${g.concurso}`]: r })))
+        .catch(() => {});
+    });
+  }, [games, byConcurso]);
+
+  const addManual = () => {
+    const l = getLottery(lot);
+    const parsed = nums.split(/[\s,;.-]+/).filter(Boolean).map(Number);
+    const valid = parsed.length === l.pick && parsed.every((n) => Number.isInteger(n) && n >= l.min && n <= l.max) && new Set(parsed).size === parsed.length;
+    if (!valid) {
+      setAddError(`Digite ${l.pick} números válidos entre ${l.min} e ${l.max}, sem repetir.`);
+      return;
+    }
+    setAddError("");
+    const c = Number(conc);
+    setGames(saveGames([{ lottery: lot, numbers: parsed.sort((a, b) => a - b), concurso: c > 0 ? c : undefined }]));
+    setNums("");
+    setConc("");
+  };
+
+  const resultFor = (g: SavedGame): LotteryResult | undefined =>
+    g.concurso ? byConcurso[`${g.lottery}-${g.concurso}`] : q.data?.find((r) => r.id === g.lottery);
+
+  return (
+    <div className="space-y-3">
+      <section className="space-y-2 rounded-2xl border bg-card p-4">
+        <h2 className="text-sm font-bold">Adicionar jogo manualmente</h2>
+        <select value={lot} onChange={(e) => setLot(e.target.value as LotteryId)} className="h-12 w-full rounded-xl border bg-background px-3 text-sm font-bold">
+          {LOTTERIES.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+        <input
+          value={nums}
+          onChange={(e) => setNums(e.target.value)}
+          placeholder={`Números separados por espaço (ex: 01 05 12...)`}
+          className="h-12 w-full rounded-xl border bg-background px-3 text-base"
+        />
+        <div className="flex gap-2">
+          <input inputMode="numeric" value={conc} onChange={(e) => setConc(e.target.value.replace(/\D/g, ""))} placeholder="Concurso (opcional)" className="h-12 min-w-0 flex-1 rounded-xl border bg-background px-3 text-base" />
+          <button onClick={addManual} className="h-12 rounded-xl bg-primary px-5 font-bold text-primary-foreground">Adicionar</button>
+        </div>
+        {addError && <p className="text-xs font-bold text-destructive">{addError}</p>}
+        <p className="text-[11px] text-muted-foreground">Sem concurso informado, o jogo é conferido contra o último resultado.</p>
+      </section>
+
+      <div className="flex items-center justify-between pt-1">
+        <h2 className="text-sm font-bold text-muted-foreground">Meus jogos salvos ({games.length})</h2>
+        {games.length > 0 && (
+          <button onClick={() => { clearGames(); setGames([]); }} className="text-xs font-bold text-destructive">Apagar todos</button>
+        )}
+      </div>
+
+      {games.length === 0 && (
+        <p className="rounded-2xl bg-card p-4 text-center text-sm text-muted-foreground">
+          Nenhum jogo salvo. Gere jogos na aba Gerar e toque em "Salvar jogos", ou adicione manualmente acima.
+        </p>
+      )}
+
+      {games.map((g) => {
+        const l = getLottery(g.lottery);
+        const r = resultFor(g);
+        const drawn = r ? [...r.dezenas.map(Number), ...r.dezenas2.map(Number)] : [];
+        const { hits, matched } = drawn.length ? countHits(g.numbers, drawn) : { hits: 0, matched: [] as number[] };
+        const matchedSet = new Set(matched);
+        return (
+          <article key={g.id} className="shadow-card rounded-2xl border bg-card p-4">
+            <div className="mb-2 flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold">{l.name}</h3>
+                <p className="text-[11px] text-muted-foreground">
+                  {g.concurso ? `Concurso ${g.concurso}` : "Último concurso"}
+                  {r?.concurso ? ` • conferido com ${r.concurso}` : ""}
+                </p>
+              </div>
+              <button onClick={() => setGames(removeGame(g.id))} aria-label="Apagar jogo" className="rounded-full px-2 py-1 text-xs font-bold text-destructive">✕</button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {g.numbers.map((n, i) => (
+                <span
+                  key={i}
+                  className={`inline-grid h-8 w-8 place-items-center rounded-full text-xs font-bold ${matchedSet.has(n) ? "ball" : "border bg-muted text-muted-foreground"}`}
+                >
+                  {fmt(n, l.pad)}
+                </span>
+              ))}
+            </div>
+            <div className="mt-3 rounded-xl bg-muted p-3 text-sm">
+              {!r ? (
+                <p className="text-muted-foreground">{q.isLoading ? "Carregando resultado..." : "Resultado indisponível. Toque em atualizar na aba Resultados."}</p>
+              ) : r.error ? (
+                <p className="text-muted-foreground">{r.error}</p>
+              ) : (
+                <p>
+                  <span className={`font-bold ${hits > 0 ? "text-primary" : ""}`}>{hits} {hits === 1 ? "acerto" : "acertos"}</span>
+                  {hits === l.pick ? " 🎉 Parabéns, jogo premiado na faixa principal!" : hits > 0 ? " — números em verde" : " — nenhum número sorteado"}
+                </p>
+              )}
+            </div>
+          </article>
+        );
+      })}
+      <p className="text-center text-[11px] text-muted-foreground">Os jogos ficam salvos apenas neste aparelho.</p>
+    </div>
+  );
+}
+
 function NextDraws() {
   const q = useQuery({ ...resultsQuery, staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true });
   return (
