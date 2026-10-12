@@ -50,7 +50,7 @@ function useInstall() {
 const resultsQuery = { queryKey: ["results"], queryFn: () => getResults(), staleTime: 5 * 60_000 };
 
 function Index() {
-  const [tab, setTab] = useState<"gerar" | "resultados">("gerar");
+  const [tab, setTab] = useState<"gerar" | "resultados" | "proximos">("gerar");
   const { dark, toggle } = useTheme();
   const install = useInstall();
 
@@ -76,11 +76,11 @@ function Index() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 pt-5">{tab === "gerar" ? <Generator /> : <Results />}</main>
+      <main className="flex-1 px-4 pt-5">{tab === "gerar" ? <Generator /> : tab === "resultados" ? <Results /> : <NextDraws />}</main>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-        <div className="mx-auto grid max-w-lg grid-cols-2 gap-2 p-2">
-          {([["gerar", "🎲", "Gerar Jogos"], ["resultados", "🏆", "Resultados"]] as const).map(([id, icon, label]) => (
+        <div className="mx-auto grid max-w-lg grid-cols-3 gap-2 p-2">
+          {([["gerar", "🎲", "Gerar Jogos"], ["resultados", "🏆", "Resultados"], ["proximos", "📅", "Próximos"]] as const).map(([id, icon, label]) => (
             <button
               key={id}
               onClick={() => { setTab(id); window.scrollTo({ top: 0 }); }}
@@ -236,7 +236,7 @@ function ConcursoSearch() {
     if (!n) return;
     setLoading(true);
     try { setRes(await getResultByConcurso({ data: { id: lot, concurso: n } })); }
-    catch { setRes({ id: lot, concurso: null, data: null, dezenas: [], dezenas2: [], extra: [], ganhadores: 0, locais: [], acumulou: false, proximoEstimado: null, premio: null, error: "Concurso inválido" }); }
+    catch { setRes({ id: lot, concurso: null, data: null, dezenas: [], dezenas2: [], extra: [], ganhadores: 0, locais: [], acumulou: false, proximoEstimado: null, proximoData: null, proximoConcurso: null, premio: null, error: "Concurso inválido" }); }
     finally { setLoading(false); }
   };
   return (
@@ -271,6 +271,54 @@ function Results() {
       {q.isLoading && Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-40 animate-pulse rounded-2xl bg-muted" />)}
       {q.isError && <p className="rounded-2xl bg-card p-4 text-center text-sm">Não foi possível carregar. Verifique sua conexão e tente novamente.</p>}
       {q.data?.map((r) => <ResultCard key={r.id} r={r} />)}
+    </div>
+  );
+}
+
+function NextDraws() {
+  const q = useQuery({ ...resultsQuery, staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true });
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={() => q.refetch()}
+        disabled={q.isFetching}
+        className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary font-bold text-primary-foreground disabled:opacity-60"
+      >
+        <span className={q.isFetching ? "animate-spin" : ""}>🔄</span>
+        {q.isFetching ? "Atualizando..." : "Atualizar"}
+      </button>
+      {q.isLoading && Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 animate-pulse rounded-2xl bg-muted" />)}
+      {q.isError && <p className="rounded-2xl bg-card p-4 text-center text-sm">Não foi possível carregar. Verifique sua conexão e tente novamente.</p>}
+      {q.data?.map((r) => {
+        const l = getLottery(r.id as LotteryId);
+        return (
+          <article key={r.id} className="shadow-card rounded-2xl border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="font-bold">{l.name}</h3>
+              {r.proximoConcurso && (
+                <span className="rounded-full bg-accent px-2.5 py-1 text-[11px] font-bold text-accent-foreground">
+                  Concurso {r.proximoConcurso}
+                </span>
+              )}
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between rounded-xl bg-muted px-3 py-2.5">
+                <span className="text-muted-foreground">📅 Data do sorteio</span>
+                <b>{r.proximoData ?? "Não informado"}</b>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-muted px-3 py-2.5">
+                <span className="text-muted-foreground">💰 Prêmio estimado</span>
+                <b className="text-primary">{r.proximoEstimado ? brl(r.proximoEstimado) : "Não informado"}</b>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-muted px-3 py-2.5">
+                <span className="text-muted-foreground">🕗 Horário</span>
+                <b>20h (Brasília)</b>
+              </div>
+            </div>
+          </article>
+        );
+      })}
+      <p className="text-center text-[11px] text-muted-foreground">Valores estimados pela Caixa. Sorteios às 20h no Espaço da Sorte, em São Paulo.</p>
     </div>
   );
 }
