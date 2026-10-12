@@ -75,6 +75,8 @@ function fromAlt(id: string, d: Any): LotteryResult {
     locais,
     acumulou: !!d.acumulou,
     proximoEstimado: d.valorEstimadoProximoConcurso ?? null,
+    proximoData: d.dataProximoConcurso ?? null,
+    proximoConcurso: d.proximoConcurso ?? null,
     premio: faixa1.valorPremio ?? null,
   };
 }
@@ -91,7 +93,7 @@ async function getJson(url: string) {
 }
 
 function emptyResult(id: string, error: string): LotteryResult {
-  return { id, concurso: null, data: null, dezenas: [], dezenas2: [], extra: [], ganhadores: 0, locais: [], acumulou: false, proximoEstimado: null, premio: null, error };
+  return { id, concurso: null, data: null, dezenas: [], dezenas2: [], extra: [], ganhadores: 0, locais: [], acumulou: false, proximoEstimado: null, proximoData: null, proximoConcurso: null, premio: null, error };
 }
 
 /** Queries both sources in parallel and keeps the most recent draw. */
