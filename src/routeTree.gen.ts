@@ -10,33 +10,58 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicHooksCheckDrawsRouteImport } from './routes/api/public/hooks/check-draws'
+import { Route as ApiPublicPushInboxRouteImport } from './routes/api/public/push/inbox'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksCheckDrawsRoute =
+  ApiPublicHooksCheckDrawsRouteImport.update({
+    id: '/api/public/hooks/check-draws',
+    path: '/api/public/hooks/check-draws',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicPushInboxRoute = ApiPublicPushInboxRouteImport.update({
+  id: '/api/public/push/inbox',
+  path: '/api/public/push/inbox',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/public/hooks/check-draws': typeof ApiPublicHooksCheckDrawsRoute
+  '/api/public/push/inbox': typeof ApiPublicPushInboxRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/public/hooks/check-draws': typeof ApiPublicHooksCheckDrawsRoute
+  '/api/public/push/inbox': typeof ApiPublicPushInboxRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/public/hooks/check-draws': typeof ApiPublicHooksCheckDrawsRoute
+  '/api/public/push/inbox': typeof ApiPublicPushInboxRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/api/public/hooks/check-draws' | '/api/public/push/inbox'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/public/hooks/check-draws' | '/api/public/push/inbox'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/public/hooks/check-draws'
+    | '/api/public/push/inbox'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiPublicHooksCheckDrawsRoute: typeof ApiPublicHooksCheckDrawsRoute
+  ApiPublicPushInboxRoute: typeof ApiPublicPushInboxRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +73,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/check-draws': {
+      id: '/api/public/hooks/check-draws'
+      path: '/api/public/hooks/check-draws'
+      fullPath: '/api/public/hooks/check-draws'
+      preLoaderRoute: typeof ApiPublicHooksCheckDrawsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/push/inbox': {
+      id: '/api/public/push/inbox'
+      path: '/api/public/push/inbox'
+      fullPath: '/api/public/push/inbox'
+      preLoaderRoute: typeof ApiPublicPushInboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiPublicHooksCheckDrawsRoute: ApiPublicHooksCheckDrawsRoute,
+  ApiPublicPushInboxRoute: ApiPublicPushInboxRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

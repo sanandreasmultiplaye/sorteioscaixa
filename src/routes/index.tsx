@@ -6,6 +6,7 @@ import { generateGame, type Game, type Method } from "@/lib/generator";
 import { getResults, getResultByConcurso, type LotteryResult } from "@/lib/results.functions";
 import { loadGames, saveGames, removeGame, clearGames, countHits, type SavedGame } from "@/lib/tickets";
 import { playCoins, soundEnabled, setSoundEnabled, MIN_PRIZE } from "@/lib/coin-sound";
+import { pushSupported, loadPrefs, enablePush, updatePrefs, disablePush, currentSubscription, ASKED, type PushPrefs } from "@/lib/push-client";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -51,10 +52,151 @@ function useInstall() {
 
 const resultsQuery = { queryKey: ["results"], queryFn: () => getResults(), staleTime: 5 * 60_000 };
 
+type Tab = "gerar" | "resultados" | "proximos" | "conferir";
+
+function closeTime(data: string | null) {
+  const m = data?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? Date.UTC(+m[3]!, +m[2]! - 1, +m[1]!, 22, 0) : null; // 19h Brasília
+}
+function countdown(data: string | null, now: number) {
+  const t = closeTime(data);
+  if (!t) return "Data não informada";
+  const ms = t - now;
+  if (ms <= 0) return "Apostas encerradas";
+  const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000), min = Math.floor((ms % 3600000) / 60000);
+  return `Faltam ${d ? `${d}d ${h}h` : h ? `${h}h ${min}min` : `${min}min`} para apostar`;
+}
+
+function Ticker({ onPick, onClose }: { onPick: (id: LotteryId) => void; onClose: () => void }) {
+  const q = useQuery(resultsQuery);
+  const [i, setI] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const a = setInterval(() => setI((x) => x + 1), 30_000);
+    const b = setInterval(() => setNow(Date.now()), 30_000);
+    return () => { clearInterval(a); clearInterval(b); };
+  }, []);
+  const list = (q.data ?? []).filter((r) => r.proximoEstimado).sort((a, b) => (b.proximoEstimado ?? 0) - (a.proximoEstimado ?? 0));
+  if (!list.length) return null;
+  const r = list[i % list.length]!;
+  return (
+    <div className="mt-4 flex items-stretch gap-1 rounded-2xl bg-background/15 backdrop-blur">
+      <button key={r.id} onClick={() => onPick(r.id as LotteryId)} className="animate-pop min-w-0 flex-1 px-3 py-2 text-left">
+        <div className="flex items-center justify-between gap-2 text-[11px] font-bold uppercase opacity-80">
+          <span>💰 {getLottery(r.id as LotteryId).name}</span>
+          <span>{(i % list.length) + 1}/{list.length}</span>
+        </div>
+        <div className="font-display text-lg font-bold leading-tight">{brl(r.proximoEstimado)}</div>
+        <div className="text-xs opacity-90">⏳ {countdown(r.proximoData, now)} • toque para jogar</div>
+      </button>
+      <button onClick={onClose} aria-label="Silenciar letreiro" className="px-3 text-sm opacity-80">✕</button>
+    </div>
+  );
+}
+
+function AskNotifications({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
+  return (
+    <div className="shadow-card mb-4 rounded-2xl border-2 border-primary bg-card p-4">
+      <p className="font-bold">🔔 Quer receber notificações fora do app?</p>
+      <p className="mt-1 text-xs text-muted-foreground">Avisamos no seu celular quando sair o resultado das loterias que você escolher, mesmo com o app fechado.</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button onClick={onNo} className="h-12 rounded-xl border font-bold">Agora não</button>
+        <button onClick={onYes} className="h-12 rounded-xl bg-primary font-bold text-primary-foreground">Sim, quero</button>
+      </div>
+    </div>
+  );
+}
+
+function NotifPanel({ onClose, tickerOn, setTickerOn }: { onClose: () => void; tickerOn: boolean; setTickerOn: (v: boolean) => void }) {
+  const [prefs, setPrefs] = useState<PushPrefs>(() => loadPrefs());
+  const [active, setActive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  useEffect(() => { currentSubscription().then((s) => setActive(!!s && Notification.permission === "granted")).catch(() => {}); }, []);
+
+  const change = (p: PushPrefs) => { setPrefs(p); if (active) updatePrefs(p).catch(() => setMsg("Não foi possível salvar.")); else localStorage.setItem("push-prefs", JSON.stringify(p)); };
+  const toggle = (id: LotteryId) => change({ ...prefs, lotteries: prefs.lotteries.includes(id) ? prefs.lotteries.filter((x) => x !== id) : [...prefs.lotteries, id] });
+  const run = async (fn: () => Promise<void>, ok: string) => {
+    setBusy(true); setMsg("");
+    try { await fn(); setMsg(ok); } catch (e) { setMsg(e instanceof Error ? e.message : "Erro"); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end bg-foreground/40" onClick={onClose}>
+      <div className="mx-auto max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-background p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-display text-lg font-bold">🔔 Notificações</h2>
+          <button onClick={onClose} className="h-10 w-10 rounded-full bg-card font-bold">✕</button>
+        </div>
+        {active ? (
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <button disabled={busy} onClick={() => run(() => enablePush(prefs, true), "Teste enviado! Deve chegar em instantes.")} className="h-12 rounded-xl border-2 border-primary font-bold text-primary">Enviar teste</button>
+            <button disabled={busy} onClick={() => run(async () => { await disablePush(); setActive(false); }, "Notificações desativadas.")} className="h-12 rounded-xl border font-bold text-destructive">Desativar</button>
+          </div>
+        ) : (
+          <button disabled={busy} onClick={() => run(async () => { await enablePush(prefs, true); setActive(true); }, "Pronto! Você receberá os avisos neste aparelho.")} className="bg-hero mb-3 h-14 w-full rounded-2xl font-bold text-primary-foreground dark:text-foreground">
+            {busy ? "Ativando..." : "Ativar notificações no celular"}
+          </button>
+        )}
+        {msg && <p className="mb-3 rounded-xl bg-card p-3 text-sm">{msg}</p>}
+        <div className="mb-2 flex items-center justify-between text-sm">
+          <b>Avisar resultados de:</b>
+          <div className="flex gap-3 text-xs font-bold text-primary">
+            <button onClick={() => change({ ...prefs, lotteries: LOTTERIES.map((l) => l.id) })}>Marcar todas</button>
+            <button onClick={() => change({ ...prefs, lotteries: [] })}>Desmarcar</button>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          {LOTTERIES.map((l) => (
+            <Switch key={l.id} label={l.name} on={prefs.lotteries.includes(l.id)} onChange={() => toggle(l.id)} />
+          ))}
+        </div>
+        <h3 className="mb-2 mt-4 text-sm font-bold">Outros avisos</h3>
+        <div className="space-y-1.5">
+          <Switch label="⏰ Lembrete no dia do sorteio (antes das 19h)" on={prefs.reminders} onChange={() => change({ ...prefs, reminders: !prefs.reminders })} />
+          <Switch label="💰 Letreiro de prêmios no topo do app" on={tickerOn} onChange={() => setTickerOn(!tickerOn)} />
+        </div>
+        <p className="mt-4 text-[11px] text-muted-foreground">Funciona sem login. No iPhone, é preciso instalar o app na tela inicial para receber avisos.</p>
+      </div>
+    </div>
+  );
+}
+
+function Switch({ label, on, onChange }: { label: string; on: boolean; onChange: () => void }) {
+  return (
+    <button onClick={onChange} role="switch" aria-checked={on} className="flex w-full items-center justify-between rounded-xl border bg-card px-4 py-3 text-left text-sm font-bold">
+      {label}
+      <span className={`relative h-6 w-11 shrink-0 rounded-full transition ${on ? "bg-primary" : "bg-muted"}`}>
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition-all ${on ? "left-[1.375rem]" : "left-0.5"}`} />
+      </span>
+    </button>
+  );
+}
+
 function Index() {
-  const [tab, setTab] = useState<"gerar" | "resultados" | "proximos" | "conferir">("gerar");
+  const [tab, setTab] = useState<Tab>("gerar");
+  const [genLot, setGenLot] = useState<LotteryId>("megasena");
+  const [genKey, setGenKey] = useState(0);
+  const [panel, setPanel] = useState(false);
+  const [ask, setAsk] = useState(false);
+  const [tickerOn, setTickerOnState] = useState(false);
   const { dark, toggle } = useTheme();
   const install = useInstall();
+
+  useEffect(() => {
+    const p = new URLSearchParams(location.search);
+    const t = p.get("tab") as Tab | null;
+    if (t && ["gerar", "resultados", "proximos", "conferir"].includes(t)) setTab(t);
+    const l = p.get("lot") as LotteryId | null;
+    if (l && LOTTERIES.some((x) => x.id === l)) { setGenLot(l); setGenKey((k) => k + 1); }
+    if (p.size) history.replaceState(null, "", "/");
+    setTickerOnState(localStorage.getItem("ticker-off") !== "1");
+    if (pushSupported() && !localStorage.getItem(ASKED) && Notification.permission === "default") setAsk(true);
+  }, []);
+
+  const setTickerOn = (v: boolean) => { setTickerOnState(v); localStorage.setItem("ticker-off", v ? "0" : "1"); };
+  const pickLottery = (id: LotteryId) => { setGenLot(id); setGenKey((k) => k + 1); setTab("gerar"); window.scrollTo({ top: 0 }); };
+  const answerAsk = (yes: boolean) => { localStorage.setItem(ASKED, "1"); setAsk(false); if (yes) setPanel(true); };
 
   return (
     <div className="mx-auto flex min-h-screen max-w-lg flex-col pb-28">
@@ -71,16 +213,20 @@ function Index() {
             {install && (
               <button onClick={install} className="h-10 rounded-full bg-background/20 px-3 text-xs font-bold backdrop-blur">Instalar</button>
             )}
+            <button onClick={() => setPanel(true)} aria-label="Notificações" className="grid h-10 w-10 place-items-center rounded-full bg-background/20 text-lg backdrop-blur">🔔</button>
             <button onClick={toggle} aria-label="Alternar tema" className="grid h-10 w-10 place-items-center rounded-full bg-background/20 text-lg backdrop-blur">
               {dark ? "☀️" : "🌙"}
             </button>
           </div>
         </div>
+        {tickerOn && <Ticker onPick={pickLottery} onClose={() => setTickerOn(false)} />}
       </header>
 
       <main className="flex-1 px-4 pt-5">
-        {tab === "gerar" ? <Generator /> : tab === "resultados" ? <Results /> : tab === "proximos" ? <NextDraws /> : <Checker />}
+        {ask && <AskNotifications onYes={() => answerAsk(true)} onNo={() => answerAsk(false)} />}
+        {tab === "gerar" ? <Generator key={genKey} initialLot={genLot} /> : tab === "resultados" ? <Results /> : tab === "proximos" ? <NextDraws /> : <Checker />}
       </main>
+      {panel && <NotifPanel onClose={() => setPanel(false)} tickerOn={tickerOn} setTickerOn={setTickerOn} />}
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
         <div className="mx-auto grid max-w-lg grid-cols-4 gap-1.5 p-2">
@@ -115,8 +261,8 @@ function extraLabel(l: Lottery, n: number) {
   return l.extra?.names ? l.extra.names[n - 1] : String(n);
 }
 
-function Generator() {
-  const [lot, setLot] = useState<LotteryId>("megasena");
+function Generator({ initialLot = "megasena" }: { initialLot?: LotteryId }) {
+  const [lot, setLot] = useState<LotteryId>(initialLot);
   const [qtd, setQtd] = useState(1);
   const [method, setMethod] = useState<Method>("aleatorio");
   const [games, setGames] = useState<Game[]>([]);
