@@ -76,23 +76,44 @@ function fromAlt(id: string, d: Any): LotteryResult {
 }
 
 async function getJson(url: string) {
-  const r = await fetch(url, { headers: { accept: "application/json", "user-agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(8000) });
+  const sep = url.includes("?") ? "&" : "?";
+  const r = await fetch(`${url}${sep}_=${Date.now()}`, {
+    cache: "no-store",
+    headers: { accept: "application/json", "user-agent": "Mozilla/5.0", "cache-control": "no-cache", pragma: "no-cache" },
+    signal: AbortSignal.timeout(9000),
+  });
   if (!r.ok) throw new Error(String(r.status));
   return r.json();
 }
 
-async function fetchOne(id: string): Promise<LotteryResult> {
-  try {
-    return fromCaixa(id, await getJson(`https://servicebus2.caixa.gov.br/portaldeloterias/api/${id}`));
-  } catch {
-    try {
-      return fromAlt(id, await getJson(`https://loteriascaixa-api.herokuapp.com/api/${id}/latest`));
-    } catch {
-      return { id, concurso: null, data: null, dezenas: [], dezenas2: [], extra: [], ganhadores: 0, locais: [], acumulou: false, proximoEstimado: null, premio: null, error: "Não foi possível carregar" };
-    }
-  }
+function emptyResult(id: string, error: string): LotteryResult {
+  return { id, concurso: null, data: null, dezenas: [], dezenas2: [], extra: [], ganhadores: 0, locais: [], acumulou: false, proximoEstimado: null, premio: null, error };
+}
+
+/** Queries both sources in parallel and keeps the most recent draw. */
+async function fetchOne(id: string, concurso?: number): Promise<LotteryResult> {
+  const suffix = concurso ? `/${concurso}` : "";
+  const [a, b] = await Promise.allSettled([
+    getJson(`https://servicebus2.caixa.gov.br/portaldeloterias/api/${id}${suffix}`).then((d) => fromCaixa(id, d)),
+    getJson(`https://loteriascaixa-api.herokuapp.com/api/${id}${concurso ? suffix : "/latest"}`).then((d) => fromAlt(id, d)),
+  ]);
+  const ok = [a, b]
+    .filter((x): x is PromiseFulfilledResult<LotteryResult> => x.status === "fulfilled")
+    .map((x) => x.value)
+    .filter((r) => r.concurso && r.dezenas.length && (!concurso || r.concurso === concurso));
+  if (!ok.length) return emptyResult(id, concurso ? `Concurso ${concurso} não encontrado` : "Não foi possível carregar");
+  return ok.sort((x, y) => (y.concurso ?? 0) - (x.concurso ?? 0))[0];
 }
 
 export const getResults = createServerFn({ method: "GET" }).handler(async () => {
-  return Promise.all(IDS.map(fetchOne));
+  return Promise.all(IDS.map((id) => fetchOne(id)));
 });
+
+export const getResultByConcurso = createServerFn({ method: "GET" })
+  .inputValidator((d: { id: string; concurso: number }) => {
+    if (!IDS.includes(d.id)) throw new Error("Loteria inválida");
+    const c = Math.floor(Number(d.concurso));
+    if (!(c > 0 && c < 100000)) throw new Error("Concurso inválido");
+    return { id: d.id, concurso: c };
+  })
+  .handler(async ({ data }) => fetchOne(data.id, data.concurso));

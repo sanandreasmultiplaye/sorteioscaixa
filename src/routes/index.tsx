@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { LOTTERIES, getLottery, fmt, type LotteryId, type Lottery } from "@/lib/lotteries";
 import { generateGame, type Game, type Method } from "@/lib/generator";
-import { getResults, type LotteryResult } from "@/lib/results.functions";
+import { getResults, getResultByConcurso, type LotteryResult } from "@/lib/results.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -226,8 +226,36 @@ function Generator() {
 
 const brl = (v: number | null) => v == null ? "" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
+function ConcursoSearch() {
+  const [lot, setLot] = useState<LotteryId>("megasena");
+  const [num, setNum] = useState("");
+  const [res, setRes] = useState<LotteryResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const search = async () => {
+    const n = Number(num);
+    if (!n) return;
+    setLoading(true);
+    try { setRes(await getResultByConcurso({ data: { id: lot, concurso: n } })); }
+    catch { setRes({ id: lot, concurso: null, data: null, dezenas: [], dezenas2: [], extra: [], ganhadores: 0, locais: [], acumulou: false, proximoEstimado: null, premio: null, error: "Concurso inválido" }); }
+    finally { setLoading(false); }
+  };
+  return (
+    <section className="space-y-2 rounded-2xl border bg-card p-4">
+      <h2 className="text-sm font-bold">Consultar concurso específico</h2>
+      <select value={lot} onChange={(e) => { setLot(e.target.value as LotteryId); setRes(null); }} className="h-12 w-full rounded-xl border bg-background px-3 text-sm font-bold">
+        {LOTTERIES.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </select>
+      <div className="flex gap-2">
+        <input inputMode="numeric" value={num} onChange={(e) => setNum(e.target.value.replace(/\D/g, ""))} onKeyDown={(e) => e.key === "Enter" && search()} placeholder="Nº do concurso" className="h-12 min-w-0 flex-1 rounded-xl border bg-background px-3 text-base" />
+        <button onClick={search} disabled={loading || !num} className="h-12 rounded-xl bg-primary px-5 font-bold text-primary-foreground disabled:opacity-60">{loading ? "..." : "Buscar"}</button>
+      </div>
+      {res && <ResultCard r={res} />}
+    </section>
+  );
+}
+
 function Results() {
-  const q = useQuery(resultsQuery);
+  const q = useQuery({ ...resultsQuery, staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true });
   return (
     <div className="space-y-3">
       <button
@@ -238,6 +266,8 @@ function Results() {
         <span className={q.isFetching ? "animate-spin" : ""}>🔄</span>
         {q.isFetching ? "Atualizando..." : "Atualizar resultados"}
       </button>
+      <ConcursoSearch />
+      <h2 className="pt-1 text-sm font-bold text-muted-foreground">Últimos concursos</h2>
       {q.isLoading && Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-40 animate-pulse rounded-2xl bg-muted" />)}
       {q.isError && <p className="rounded-2xl bg-card p-4 text-center text-sm">Não foi possível carregar. Verifique sua conexão e tente novamente.</p>}
       {q.data?.map((r) => <ResultCard key={r.id} r={r} />)}
