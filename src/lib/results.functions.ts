@@ -123,3 +123,8 @@ export const getResultByConcurso = createServerFn({ method: "GET" })
     return { id: d.id, concurso: c };
   })
   .handler(async ({ data }) => fetchOne(data.id, data.concurso));
+
+/** Plain server-side helper (used by the scheduled checker). */
+export function fetchAllLatest() {
+  return Promise.all(IDS.map((id) => fetchOne(id)));
+}
