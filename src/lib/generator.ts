@@ -4,7 +4,7 @@ export type Method = "aleatorio" | "equilibrado" | "soma" | "frequencia";
 
 export interface Game {
   numbers: number[];
-  extra?: number[];
+  extra?: number[] | undefined;
 }
 
 const randInt = (min: number, max: number, rnd: () => number) =>
