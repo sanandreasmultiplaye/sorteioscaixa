@@ -102,7 +102,7 @@ async function fetchOne(id: string, concurso?: number): Promise<LotteryResult> {
     .map((x) => x.value)
     .filter((r) => r.concurso && r.dezenas.length && (!concurso || r.concurso === concurso));
   if (!ok.length) return emptyResult(id, concurso ? `Concurso ${concurso} não encontrado` : "Não foi possível carregar");
-  return ok.sort((x, y) => (y.concurso ?? 0) - (x.concurso ?? 0))[0];
+  return ok.sort((x, y) => (y.concurso ?? 0) - (x.concurso ?? 0))[0]!;
 }
 
 export const getResults = createServerFn({ method: "GET" }).handler(async () => {
