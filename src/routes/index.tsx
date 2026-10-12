@@ -1,24 +1,296 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { LOTTERIES, getLottery, fmt, type LotteryId, type Lottery } from "@/lib/lotteries";
+import { generateGame, type Game, type Method } from "@/lib/generator";
+import { getResults, type LotteryResult } from "@/lib/results.functions";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Loterias Caixa Gerador — Jogos e Resultados" },
+      { name: "description", content: "Gere jogos da Mega-Sena, Lotofácil, Quina e mais. Confira os últimos resultados e onde saíram os ganhadores." },
+      { property: "og:title", content: "Loterias Caixa Gerador" },
+      { property: "og:description", content: "Gere jogos das loterias da Caixa e veja os últimos resultados." },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
+const METHODS: { id: Method; label: string; hint: string }[] = [
+  { id: "aleatorio", label: "Aleatório", hint: "Sorteio totalmente ao acaso" },
+  { id: "equilibrado", label: "Equilibrado", hint: "Metade pares, metade ímpares" },
+  { id: "soma", label: "Por Soma", hint: "Soma próxima da média" },
+  { id: "frequencia", label: "Frequência", hint: "Favorece números do último sorteio" },
+];
+const QTDS = [1, 2, 3, 5, 10];
+
+function useTheme() {
+  const [dark, setDark] = useState(false);
+  useEffect(() => setDark(document.documentElement.classList.contains("dark")), []);
+  const toggle = () => {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+  };
+  return { dark, toggle };
+}
+
+function useInstall() {
+  const [evt, setEvt] = useState<any>(null);
+  useEffect(() => {
+    const h = (e: Event) => { e.preventDefault(); setEvt(e); };
+    window.addEventListener("beforeinstallprompt", h);
+    return () => window.removeEventListener("beforeinstallprompt", h);
+  }, []);
+  return evt ? async () => { evt.prompt(); await evt.userChoice; setEvt(null); } : null;
+}
+
+const resultsQuery = { queryKey: ["results"], queryFn: () => getResults(), staleTime: 5 * 60_000 };
+
 function Index() {
+  const [tab, setTab] = useState<"gerar" | "resultados">("gerar");
+  const { dark, toggle } = useTheme();
+  const install = useInstall();
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="mx-auto flex min-h-screen max-w-lg flex-col pb-28">
+      <header className="bg-hero rounded-b-[2rem] px-5 pb-6 pt-[max(1.25rem,env(safe-area-inset-top))] text-primary-foreground dark:text-foreground">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <img src="/icon-192.png" alt="" width={40} height={40} className="h-10 w-10 rounded-xl" />
+            <div>
+              <h1 className="text-lg font-bold leading-tight">Loterias Caixa</h1>
+              <p className="text-xs opacity-80">Gerador de jogos & resultados</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {install && (
+              <button onClick={install} className="h-10 rounded-full bg-background/20 px-3 text-xs font-bold backdrop-blur">Instalar</button>
+            )}
+            <button onClick={toggle} aria-label="Alternar tema" className="grid h-10 w-10 place-items-center rounded-full bg-background/20 text-lg backdrop-blur">
+              {dark ? "☀️" : "🌙"}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 px-4 pt-5">{tab === "gerar" ? <Generator /> : <Results />}</main>
+
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+        <div className="mx-auto grid max-w-lg grid-cols-2 gap-2 p-2">
+          {([["gerar", "🎲", "Gerar Jogos"], ["resultados", "🏆", "Resultados"]] as const).map(([id, icon, label]) => (
+            <button
+              key={id}
+              onClick={() => { setTab(id); window.scrollTo({ top: 0 }); }}
+              className={`flex h-14 flex-col items-center justify-center rounded-2xl text-sm font-bold transition ${tab === id ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              <span className="text-lg leading-none">{icon}</span>
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
     </div>
+  );
+}
+
+function Ball({ value, extra, small, delay = 0 }: { value: string; extra?: boolean; small?: boolean; delay?: number }) {
+  return (
+    <span
+      style={{ animationDelay: `${delay}ms` }}
+      className={`${extra ? "ball-extra" : "ball"} animate-pop inline-grid shrink-0 place-items-center rounded-full font-display font-bold ${small ? "h-8 w-8 text-xs" : "h-10 w-10 text-sm"}`}
+    >
+      {value}
+    </span>
+  );
+}
+
+function extraLabel(l: Lottery, n: number) {
+  return l.extra?.names ? l.extra.names[n - 1] : String(n);
+}
+
+function Generator() {
+  const [lot, setLot] = useState<LotteryId>("megasena");
+  const [qtd, setQtd] = useState(1);
+  const [method, setMethod] = useState<Method>("aleatorio");
+  const [games, setGames] = useState<Game[]>([]);
+  const [seed, setSeed] = useState(0);
+  const l = getLottery(lot);
+  const results = useQuery({ ...resultsQuery, enabled: method === "frequencia" });
+
+  const generate = () => {
+    const r = results.data?.find((x) => x.id === lot);
+    const hot = [...(r?.dezenas ?? []), ...(r?.dezenas2 ?? [])].map(Number);
+    setGames(Array.from({ length: qtd }, () => generateGame(l, method, hot)));
+    setSeed((s) => s + 1);
+    navigator.vibrate?.(30);
+  };
+
+  const shareText = () => {
+    const lines = games.map((g, i) => {
+      const nums = g.numbers.map((n) => fmt(n, l.pad)).join(" - ");
+      const ex = g.extra ? ` | ${l.extra!.label}: ${g.extra.map((n) => extraLabel(l, n)).join(", ")}` : "";
+      return `Jogo ${i + 1}: ${nums}${ex}`;
+    });
+    return `🍀 *${l.name}* — meus jogos\n\n${lines.join("\n")}\n\nGerado no app Loterias Caixa Gerador`;
+  };
+
+  return (
+    <div className="space-y-5">
+      <section>
+        <h2 className="mb-2 text-sm font-bold text-muted-foreground">Escolha a loteria</h2>
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+          {LOTTERIES.map((x) => (
+            <button
+              key={x.id}
+              onClick={() => { setLot(x.id); setGames([]); }}
+              className={`h-11 shrink-0 rounded-full border px-4 text-sm font-bold transition ${lot === x.id ? "border-primary bg-primary text-primary-foreground" : "bg-card"}`}
+            >
+              {x.name}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {l.columns ? `${l.columns} colunas de 0 a 9` : `${l.pick} números de ${fmt(l.min, l.pad)} a ${l.max}`}
+          {l.extra ? ` + ${l.extra.label}` : ""}
+        </p>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-bold text-muted-foreground">Quantidade de jogos</h2>
+        <div className="grid grid-cols-5 gap-2">
+          {QTDS.map((q) => (
+            <button key={q} onClick={() => setQtd(q)} className={`h-12 rounded-xl border text-base font-bold ${qtd === q ? "border-primary bg-primary text-primary-foreground" : "bg-card"}`}>
+              {q}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-bold text-muted-foreground">Método de geração</h2>
+        <div className="grid grid-cols-2 gap-2">
+          {METHODS.map((m) => (
+            <button key={m.id} onClick={() => setMethod(m.id)} className={`rounded-xl border p-3 text-left ${method === m.id ? "border-primary bg-accent" : "bg-card"}`}>
+              <div className="text-sm font-bold">{m.label}</div>
+              <div className="text-[11px] leading-tight text-muted-foreground">{m.hint}</div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <button onClick={generate} className="bg-hero shadow-card h-16 w-full rounded-2xl font-display text-lg font-bold text-primary-foreground active:scale-[0.98] dark:text-foreground">
+        🎲 Gerar {qtd > 1 ? `${qtd} jogos` : "jogo"}
+      </button>
+
+      {games.length > 0 && (
+        <section className="space-y-3" key={seed}>
+          {games.map((g, i) => (
+            <div key={i} className="shadow-card rounded-2xl border bg-card p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Jogo {i + 1}</span>
+                <span className="text-xs text-muted-foreground">{l.name}</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {g.numbers.map((n, j) => (
+                  <Ball key={j} value={fmt(n, l.pad)} small={l.pick > 10} delay={j * 25} />
+                ))}
+              </div>
+              {g.extra && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
+                  <span className="text-xs font-bold text-muted-foreground">{l.extra!.label}:</span>
+                  {l.extra!.names
+                    ? <span className="ball-extra rounded-full px-3 py-1.5 text-sm font-bold">{extraLabel(l, g.extra[0] ?? 1)}</span>
+                    : g.extra.map((n, j) => <Ball key={j} value={String(n)} extra />)}
+                </div>
+              )}
+            </div>
+          ))}
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent(shareText())}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-16 w-full items-center justify-center gap-2 rounded-2xl bg-whatsapp font-display text-lg font-bold text-primary-foreground shadow-card active:scale-[0.98]"
+          >
+            <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current" aria-hidden><path d="M17.5 14.4c-.3-.2-1.8-.9-2-1-.3-.1-.5-.2-.7.1-.2.3-.8 1-.9 1.2-.2.2-.3.2-.6.1-.3-.2-1.3-.5-2.4-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.6l.4-.5c.2-.2.2-.3.3-.5.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.2.2 2.1 3.2 5.1 4.5 2.5 1 3 .8 3.6.7.6-.1 1.8-.7 2-1.4.2-.7.2-1.3.2-1.4-.1-.2-.3-.3-.6-.4zM12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2z" /></svg>
+            Compartilhar no WhatsApp
+          </a>
+        </section>
+      )}
+      <p className="text-center text-[11px] text-muted-foreground">Os jogos são sugestões. Nenhum método aumenta as chances reais de ganhar.</p>
+    </div>
+  );
+}
+
+const brl = (v: number | null) => v == null ? "" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+
+function Results() {
+  const q = useQuery(resultsQuery);
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={() => q.refetch()}
+        disabled={q.isFetching}
+        className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary font-bold text-primary-foreground disabled:opacity-60"
+      >
+        <span className={q.isFetching ? "animate-spin" : ""}>🔄</span>
+        {q.isFetching ? "Atualizando..." : "Atualizar resultados"}
+      </button>
+      {q.isLoading && Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-40 animate-pulse rounded-2xl bg-muted" />)}
+      {q.isError && <p className="rounded-2xl bg-card p-4 text-center text-sm">Não foi possível carregar. Verifique sua conexão e tente novamente.</p>}
+      {q.data?.map((r) => <ResultCard key={r.id} r={r} />)}
+    </div>
+  );
+}
+
+function ResultCard({ r }: { r: LotteryResult }) {
+  const l = getLottery(r.id as LotteryId);
+  const small = r.dezenas.length > 10;
+  return (
+    <article className="shadow-card rounded-2xl border bg-card p-4">
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div>
+          <h3 className="font-bold">{l.name}</h3>
+          <p className="text-xs text-muted-foreground">{r.concurso ? `Concurso ${r.concurso} • ${r.data ?? ""}` : "Sem dados"}</p>
+        </div>
+        {r.concurso && (
+          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${r.acumulou ? "bg-gold text-gold-foreground" : "bg-accent text-accent-foreground"}`}>
+            {r.acumulou ? "ACUMULOU" : "TEVE GANHADOR"}
+          </span>
+        )}
+      </div>
+      {r.error ? (
+        <p className="text-sm text-muted-foreground">{r.error}. Toque em atualizar.</p>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-1.5">{r.dezenas.map((d, i) => <Ball key={i} value={d} small={small} />)}</div>
+          {r.dezenas2.length > 0 && (
+            <>
+              <p className="mt-2 text-[11px] font-bold text-muted-foreground">2º sorteio</p>
+              <div className="mt-1 flex flex-wrap gap-1.5">{r.dezenas2.map((d, i) => <Ball key={i} value={d} />)}</div>
+            </>
+          )}
+          {r.extra.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {r.extra.map((e, i) => <span key={i} className="ball-extra rounded-full px-3 py-1 text-xs font-bold">{e}</span>)}
+            </div>
+          )}
+          <div className="mt-3 space-y-1 rounded-xl bg-muted p-3 text-sm">
+            <p>
+              <span className="font-bold">{r.ganhadores}</span> {r.ganhadores === 1 ? "ganhador" : "ganhadores"} no prêmio principal
+              {r.ganhadores > 0 && r.premio ? ` • ${brl(r.premio)} cada` : ""}
+            </p>
+            {r.ganhadores > 0 && (
+              <p className="text-xs text-muted-foreground">
+                📍 {r.locais.length ? r.locais.map((x) => `${x.qtd}x ${x.local}`).join(" • ") : "Local não informado"}
+              </p>
+            )}
+            {r.proximoEstimado ? <p className="text-xs text-muted-foreground">Próximo concurso: <b className="text-foreground">{brl(r.proximoEstimado)}</b></p> : null}
+          </div>
+        </>
+      )}
+    </article>
   );
 }
