@@ -14,7 +14,7 @@ let keyPromise: Promise<CryptoKey> | null = null;
 function getKey() {
   keyPromise ??= crypto.subtle.importKey(
     "jwk",
-    { kty: "EC", crv: "P-256", x: X, y: Y, d: process.env.VAPID_D!, ext: true },
+    { kty: "EC", crv: "P-256", x: X, y: Y, d: process.env['VAPID_D']!, ext: true },
     { name: "ECDSA", namedCurve: "P-256" },
     false,
     ["sign"],

@@ -15,7 +15,7 @@ export const Route = createFileRoute("/api/public/hooks/check-draws")({
         // so replays cannot spam devices. Accept the cron secret or the project publishable key.
         const denied = await authenticateCronRequest(request);
         const bearer = request.headers.get("authorization")?.replace("Bearer ", "");
-        if (denied && bearer !== process.env.SUPABASE_PUBLISHABLE_KEY) return denied;
+        if (denied && bearer !== process.env['SUPABASE_PUBLISHABLE_KEY']) return denied;
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
         const brt = new Date(Date.now() - 3 * 3600_000);
