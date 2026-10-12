@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { LOTTERIES, getLottery, fmt, type LotteryId, type Lottery } from "@/lib/lotteries";
 import { generateGame, type Game, type Method } from "@/lib/generator";
 import { getResults, getResultByConcurso, type LotteryResult } from "@/lib/results.functions";
+import { loadGames, saveGames, removeGame, clearGames, countHits, type SavedGame } from "@/lib/tickets";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -50,7 +51,7 @@ function useInstall() {
 const resultsQuery = { queryKey: ["results"], queryFn: () => getResults(), staleTime: 5 * 60_000 };
 
 function Index() {
-  const [tab, setTab] = useState<"gerar" | "resultados" | "proximos">("gerar");
+  const [tab, setTab] = useState<"gerar" | "resultados" | "proximos" | "conferir">("gerar");
   const { dark, toggle } = useTheme();
   const install = useInstall();
 
