@@ -315,7 +315,6 @@ function NextDraws() {
                 <b>20h (Brasília)</b>
               </div>
             </div>
-            {r.acumulou && r.premio == null ? null : null}
           </article>
         );
       })}
