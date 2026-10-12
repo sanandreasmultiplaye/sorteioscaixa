@@ -121,6 +121,8 @@ function Generator() {
   const [games, setGames] = useState<Game[]>([]);
   const [seed, setSeed] = useState(0);
   const [savedMsg, setSavedMsg] = useState(false);
+  const [manual, setManual] = useState(false);
+  const [picks, setPicks] = useState<number[]>([]);
   const l = getLottery(lot);
   const results = useQuery({ ...resultsQuery, enabled: method === "frequencia" });
 
@@ -128,6 +130,18 @@ function Generator() {
     const r = results.data?.find((x) => x.id === lot);
     const hot = [...(r?.dezenas ?? []), ...(r?.dezenas2 ?? [])].map(Number);
     setGames(Array.from({ length: qtd }, () => generateGame(l, method, hot)));
+    setSeed((s) => s + 1);
+    navigator.vibrate?.(30);
+  };
+
+  const finishManual = (complete: boolean) => {
+    const pool: number[] = [];
+    for (let n = l.min; n <= l.max; n++) if (!picks.includes(n)) pool.push(n);
+    const nums = [...picks];
+    if (complete) while (nums.length < l.pick) nums.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]!);
+    const extra = generateGame(l, "aleatorio").extra;
+    setPicks(nums);
+    setGames([{ numbers: nums.sort((a, b) => a - b), extra }]);
     setSeed((s) => s + 1);
     navigator.vibrate?.(30);
   };
@@ -149,7 +163,7 @@ function Generator() {
           {LOTTERIES.map((x) => (
             <button
               key={x.id}
-              onClick={() => { setLot(x.id); setGames([]); }}
+              onClick={() => { setLot(x.id); setGames([]); setPicks([]); }}
               className={`h-11 shrink-0 rounded-full border px-4 text-sm font-bold transition ${lot === x.id ? "border-primary bg-primary text-primary-foreground" : "bg-card"}`}
             >
               {x.name}
@@ -177,17 +191,50 @@ function Generator() {
         <h2 className="mb-2 text-sm font-bold text-muted-foreground">Método de geração</h2>
         <div className="grid grid-cols-2 gap-2">
           {METHODS.map((m) => (
-            <button key={m.id} onClick={() => setMethod(m.id)} className={`rounded-xl border p-3 text-left ${method === m.id ? "border-primary bg-accent" : "bg-card"}`}>
+            <button key={m.id} onClick={() => { setMethod(m.id); setManual(false); }} className={`rounded-xl border p-3 text-left ${!manual && method === m.id ? "border-primary bg-accent" : "bg-card"}`}>
               <div className="text-sm font-bold">{m.label}</div>
               <div className="text-[11px] leading-tight text-muted-foreground">{m.hint}</div>
             </button>
           ))}
+          <button onClick={() => { setManual(true); setPicks([]); }} className={`col-span-2 rounded-xl border p-3 text-left ${manual ? "border-primary bg-accent" : "bg-card"}`}>
+            <div className="text-sm font-bold">✍️ Manual (volante)</div>
+            <div className="text-[11px] leading-tight text-muted-foreground">Escolha seus números e complete o resto com aleatórios, se quiser</div>
+          </button>
         </div>
       </section>
 
-      <button onClick={generate} className="bg-hero shadow-card h-16 w-full rounded-2xl font-display text-lg font-bold text-primary-foreground active:scale-[0.98] dark:text-foreground">
-        🎲 Gerar {qtd > 1 ? `${qtd} jogos` : "jogo"}
-      </button>
+      {manual && l.columns ? (
+        <p className="rounded-2xl bg-card p-4 text-center text-sm text-muted-foreground">O modo manual não está disponível para o Super Sete. Use um método automático.</p>
+      ) : manual ? (
+        <section className="space-y-3 rounded-2xl border bg-card p-4">
+          <div className="flex items-center justify-between text-sm">
+            <b>Marcados: {picks.length}/{l.pick}</b>
+            {picks.length > 0 && <button onClick={() => setPicks([])} className="text-xs font-bold text-destructive">Limpar</button>}
+          </div>
+          <div className="grid grid-cols-10 gap-1">
+            {Array.from({ length: l.max - l.min + 1 }, (_, i) => l.min + i).map((n) => {
+              const on = picks.includes(n);
+              return (
+                <button
+                  key={n}
+                  onClick={() => setPicks((p) => on ? p.filter((x) => x !== n) : p.length < l.pick ? [...p, n] : p)}
+                  className={`aspect-square rounded-lg text-[11px] font-bold ${on ? "ball" : "border bg-background text-muted-foreground"}`}
+                >
+                  {fmt(n, l.pad)}
+                </button>
+              );
+            })}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => finishManual(true)} disabled={picks.length >= l.pick} className="h-14 rounded-2xl border-2 border-primary font-bold text-primary disabled:opacity-40">🎲 Completar aleatório</button>
+            <button onClick={() => finishManual(false)} disabled={picks.length !== l.pick} className="bg-hero h-14 rounded-2xl font-bold text-primary-foreground disabled:opacity-40 dark:text-foreground">✅ Usar jogo</button>
+          </div>
+        </section>
+      ) : (
+        <button onClick={generate} className="bg-hero shadow-card h-16 w-full rounded-2xl font-display text-lg font-bold text-primary-foreground active:scale-[0.98] dark:text-foreground">
+          🎲 Gerar {qtd > 1 ? `${qtd} jogos` : "jogo"}
+        </button>
+      )}
 
       {games.length > 0 && (
         <section className="space-y-3" key={seed}>
