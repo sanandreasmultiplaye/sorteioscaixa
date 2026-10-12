@@ -120,6 +120,7 @@ function Generator() {
   const [method, setMethod] = useState<Method>("aleatorio");
   const [games, setGames] = useState<Game[]>([]);
   const [seed, setSeed] = useState(0);
+  const [savedMsg, setSavedMsg] = useState(false);
   const l = getLottery(lot);
   const results = useQuery({ ...resultsQuery, enabled: method === "frequencia" });
 
@@ -211,6 +212,17 @@ function Generator() {
               )}
             </div>
           ))}
+          <button
+            onClick={() => {
+              saveGames(games.map((g) => ({ lottery: lot, numbers: g.numbers, extra: g.extra })));
+              setSavedMsg(true);
+              setTimeout(() => setSavedMsg(false), 2500);
+              navigator.vibrate?.(30);
+            }}
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-primary bg-card font-bold text-primary active:scale-[0.98]"
+          >
+            {savedMsg ? "✅ Jogos salvos! Veja na aba Conferir" : "💾 Salvar jogos para conferir"}
+          </button>
           <a
             href={`https://wa.me/?text=${encodeURIComponent(shareText())}`}
             target="_blank"
