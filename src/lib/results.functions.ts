@@ -17,7 +17,8 @@ export interface LotteryResult {
 
 const IDS = ["megasena", "lotofacil", "quina", "lotomania", "timemania", "duplasena", "diadesorte", "supersete", "maismilionaria"];
 
-type Any = Record<string, any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
 
 function locaisFrom(list: Any[] | undefined) {
   const map = new Map<string, number>();

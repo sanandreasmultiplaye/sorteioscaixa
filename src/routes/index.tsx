@@ -202,7 +202,7 @@ function Generator() {
                 <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
                   <span className="text-xs font-bold text-muted-foreground">{l.extra!.label}:</span>
                   {l.extra!.names
-                    ? <span className="ball-extra rounded-full px-3 py-1.5 text-sm font-bold">{extraLabel(l, g.extra[0])}</span>
+                    ? <span className="ball-extra rounded-full px-3 py-1.5 text-sm font-bold">{extraLabel(l, g.extra[0] ?? 1)}</span>
                     : g.extra.map((n, j) => <Ball key={j} value={String(n)} extra />)}
                 </div>
               )}
