@@ -322,7 +322,7 @@ function Checker() {
     }
     setAddError("");
     const c = Number(conc);
-    setGames(saveGames([{ lottery: lot, numbers: parsed.sort((a, b) => a - b), concurso: c > 0 ? c : undefined }]));
+    setGames(saveGames([{ lottery: lot, numbers: parsed.sort((a, b) => a - b), ...(c > 0 ? { concurso: c } : {}) }]));
     setNums("");
     setConc("");
   };
