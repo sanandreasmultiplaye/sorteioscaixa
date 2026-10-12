@@ -21,11 +21,11 @@ function pickUnique(min: number, max: number, count: number, rnd: () => number, 
       let r = rnd() * total;
       idx = 0;
       for (let i = 0; i < pool.length; i++) {
-        r -= weights.get(pool[i]) ?? 1;
+        r -= weights.get(pool[i]!) ?? 1;
         if (r <= 0) { idx = i; break; }
       }
     } else idx = Math.floor(rnd() * pool.length);
-    out.push(pool.splice(idx, 1)[0]);
+    out.push(pool.splice(idx, 1)[0]!);
   }
   return out.sort((a, b) => a - b);
 }
@@ -40,7 +40,7 @@ export function generateGame(l: Lottery, method: Method, hot: number[] = [], rnd
     for (let n = l.min; n <= l.max; n++) (n % 2 === 0 ? evenPool : oddPool).push(n);
     const take = (arr: number[], k: number) => {
       const a = [...arr], r: number[] = [];
-      while (r.length < k) r.push(a.splice(Math.floor(rnd() * a.length), 1)[0]);
+      while (r.length < k) r.push(a.splice(Math.floor(rnd() * a.length), 1)[0]!);
       return r;
     };
     numbers = [...take(evenPool, evens), ...take(oddPool, l.pick - evens)].sort((a, b) => a - b);
