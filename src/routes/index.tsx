@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LOTTERIES, getLottery, fmt, type LotteryId, type Lottery } from "@/lib/lotteries";
 import { generateGame, type Game, type Method } from "@/lib/generator";
 import { getResults, getResultByConcurso, type LotteryResult } from "@/lib/results.functions";
 import { loadGames, saveGames, removeGame, clearGames, countHits, type SavedGame } from "@/lib/tickets";
+import { playCoins, soundEnabled, setSoundEnabled, MIN_PRIZE } from "@/lib/coin-sound";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -345,6 +346,18 @@ function Checker() {
   const [addError, setAddError] = useState("");
   const [byConcurso, setByConcurso] = useState<Record<string, LotteryResult>>({});
   const q = useQuery(resultsQuery);
+  const [sound, setSound] = useState(true);
+  const played = useRef(false);
+  useEffect(() => { setSound(soundEnabled()); }, []);
+  useEffect(() => {
+    if (played.current || !soundEnabled()) return;
+    const win = games.some((g) => {
+      const r = g.concurso ? byConcurso[`${g.lottery}-${g.concurso}`] : q.data?.find((x) => x.id === g.lottery);
+      if (!r || r.error) return false;
+      return countHits(g.numbers, [...r.dezenas, ...r.dezenas2].map(Number)).hits >= (MIN_PRIZE[g.lottery] ?? 99);
+    });
+    if (win) { played.current = true; playCoins(); }
+  }, [games, q.data, byConcurso]);
 
   useEffect(() => { setGames(loadGames()); }, []);
 
@@ -400,6 +413,7 @@ function Checker() {
 
       <div className="flex items-center justify-between pt-1">
         <h2 className="text-sm font-bold text-muted-foreground">Meus jogos salvos ({games.length})</h2>
+        <button onClick={() => { const n = !sound; setSound(n); setSoundEnabled(n); if (n) playCoins(); }} aria-label="Som" className="rounded-full bg-card px-3 py-1 text-xs font-bold">{sound ? "🔊 Som" : "🔇 Mudo"}</button>
         {games.length > 0 && (
           <button onClick={() => { clearGames(); setGames([]); }} className="text-xs font-bold text-destructive">Apagar todos</button>
         )}
@@ -418,7 +432,7 @@ function Checker() {
         const { hits, matched } = drawn.length ? countHits(g.numbers, drawn) : { hits: 0, matched: [] as number[] };
         const matchedSet = new Set(matched);
         return (
-          <article key={g.id} className="shadow-card rounded-2xl border bg-card p-4">
+          <article key={g.id} className={`shadow-card rounded-2xl bg-card p-4 ${r && !r.error && hits >= (MIN_PRIZE[g.lottery] ?? 99) ? "border-2 border-gold" : "border"}`}>
             <div className="mb-2 flex items-start justify-between gap-2">
               <div>
                 <h3 className="text-sm font-bold">{l.name}</h3>
