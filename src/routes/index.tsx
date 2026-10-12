@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LOTTERIES, getLottery, fmt, type LotteryId, type Lottery } from "@/lib/lotteries";
 import { generateGame, type Game, type Method } from "@/lib/generator";
 import { getResults, getResultByConcurso, type LotteryResult } from "@/lib/results.functions";
 import { loadGames, saveGames, removeGame, clearGames, countHits, type SavedGame } from "@/lib/tickets";
+import { playCoins, soundEnabled, setSoundEnabled, MIN_PRIZE } from "@/lib/coin-sound";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -121,6 +122,8 @@ function Generator() {
   const [games, setGames] = useState<Game[]>([]);
   const [seed, setSeed] = useState(0);
   const [savedMsg, setSavedMsg] = useState(false);
+  const [manual, setManual] = useState(false);
+  const [picks, setPicks] = useState<number[]>([]);
   const l = getLottery(lot);
   const results = useQuery({ ...resultsQuery, enabled: method === "frequencia" });
 
@@ -128,6 +131,18 @@ function Generator() {
     const r = results.data?.find((x) => x.id === lot);
     const hot = [...(r?.dezenas ?? []), ...(r?.dezenas2 ?? [])].map(Number);
     setGames(Array.from({ length: qtd }, () => generateGame(l, method, hot)));
+    setSeed((s) => s + 1);
+    navigator.vibrate?.(30);
+  };
+
+  const finishManual = (complete: boolean) => {
+    const pool: number[] = [];
+    for (let n = l.min; n <= l.max; n++) if (!picks.includes(n)) pool.push(n);
+    const nums = [...picks];
+    if (complete) while (nums.length < l.pick) nums.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]!);
+    const extra = generateGame(l, "aleatorio").extra;
+    setPicks(nums);
+    setGames([{ numbers: nums.sort((a, b) => a - b), extra }]);
     setSeed((s) => s + 1);
     navigator.vibrate?.(30);
   };
@@ -149,7 +164,7 @@ function Generator() {
           {LOTTERIES.map((x) => (
             <button
               key={x.id}
-              onClick={() => { setLot(x.id); setGames([]); }}
+              onClick={() => { setLot(x.id); setGames([]); setPicks([]); }}
               className={`h-11 shrink-0 rounded-full border px-4 text-sm font-bold transition ${lot === x.id ? "border-primary bg-primary text-primary-foreground" : "bg-card"}`}
             >
               {x.name}
@@ -177,17 +192,50 @@ function Generator() {
         <h2 className="mb-2 text-sm font-bold text-muted-foreground">Método de geração</h2>
         <div className="grid grid-cols-2 gap-2">
           {METHODS.map((m) => (
-            <button key={m.id} onClick={() => setMethod(m.id)} className={`rounded-xl border p-3 text-left ${method === m.id ? "border-primary bg-accent" : "bg-card"}`}>
+            <button key={m.id} onClick={() => { setMethod(m.id); setManual(false); }} className={`rounded-xl border p-3 text-left ${!manual && method === m.id ? "border-primary bg-accent" : "bg-card"}`}>
               <div className="text-sm font-bold">{m.label}</div>
               <div className="text-[11px] leading-tight text-muted-foreground">{m.hint}</div>
             </button>
           ))}
+          <button onClick={() => { setManual(true); setPicks([]); }} className={`col-span-2 rounded-xl border p-3 text-left ${manual ? "border-primary bg-accent" : "bg-card"}`}>
+            <div className="text-sm font-bold">✍️ Manual (volante)</div>
+            <div className="text-[11px] leading-tight text-muted-foreground">Escolha seus números e complete o resto com aleatórios, se quiser</div>
+          </button>
         </div>
       </section>
 
-      <button onClick={generate} className="bg-hero shadow-card h-16 w-full rounded-2xl font-display text-lg font-bold text-primary-foreground active:scale-[0.98] dark:text-foreground">
-        🎲 Gerar {qtd > 1 ? `${qtd} jogos` : "jogo"}
-      </button>
+      {manual && l.columns ? (
+        <p className="rounded-2xl bg-card p-4 text-center text-sm text-muted-foreground">O modo manual não está disponível para o Super Sete. Use um método automático.</p>
+      ) : manual ? (
+        <section className="space-y-3 rounded-2xl border bg-card p-4">
+          <div className="flex items-center justify-between text-sm">
+            <b>Marcados: {picks.length}/{l.pick}</b>
+            {picks.length > 0 && <button onClick={() => setPicks([])} className="text-xs font-bold text-destructive">Limpar</button>}
+          </div>
+          <div className="grid grid-cols-10 gap-1">
+            {Array.from({ length: l.max - l.min + 1 }, (_, i) => l.min + i).map((n) => {
+              const on = picks.includes(n);
+              return (
+                <button
+                  key={n}
+                  onClick={() => setPicks((p) => on ? p.filter((x) => x !== n) : p.length < l.pick ? [...p, n] : p)}
+                  className={`aspect-square rounded-lg text-[11px] font-bold ${on ? "ball" : "border bg-background text-muted-foreground"}`}
+                >
+                  {fmt(n, l.pad)}
+                </button>
+              );
+            })}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => finishManual(true)} disabled={picks.length >= l.pick} className="h-14 rounded-2xl border-2 border-primary font-bold text-primary disabled:opacity-40">🎲 Completar aleatório</button>
+            <button onClick={() => finishManual(false)} disabled={picks.length !== l.pick} className="bg-hero h-14 rounded-2xl font-bold text-primary-foreground disabled:opacity-40 dark:text-foreground">✅ Usar jogo</button>
+          </div>
+        </section>
+      ) : (
+        <button onClick={generate} className="bg-hero shadow-card h-16 w-full rounded-2xl font-display text-lg font-bold text-primary-foreground active:scale-[0.98] dark:text-foreground">
+          🎲 Gerar {qtd > 1 ? `${qtd} jogos` : "jogo"}
+        </button>
+      )}
 
       {games.length > 0 && (
         <section className="space-y-3" key={seed}>
@@ -298,6 +346,18 @@ function Checker() {
   const [addError, setAddError] = useState("");
   const [byConcurso, setByConcurso] = useState<Record<string, LotteryResult>>({});
   const q = useQuery(resultsQuery);
+  const [sound, setSound] = useState(true);
+  const played = useRef(false);
+  useEffect(() => { setSound(soundEnabled()); }, []);
+  useEffect(() => {
+    if (played.current || !soundEnabled()) return;
+    const win = games.some((g) => {
+      const r = g.concurso ? byConcurso[`${g.lottery}-${g.concurso}`] : q.data?.find((x) => x.id === g.lottery);
+      if (!r || r.error) return false;
+      return countHits(g.numbers, [...r.dezenas, ...r.dezenas2].map(Number)).hits >= (MIN_PRIZE[g.lottery] ?? 99);
+    });
+    if (win) { played.current = true; playCoins(); }
+  }, [games, q.data, byConcurso]);
 
   useEffect(() => { setGames(loadGames()); }, []);
 
@@ -353,6 +413,7 @@ function Checker() {
 
       <div className="flex items-center justify-between pt-1">
         <h2 className="text-sm font-bold text-muted-foreground">Meus jogos salvos ({games.length})</h2>
+        <button onClick={() => { const n = !sound; setSound(n); setSoundEnabled(n); if (n) playCoins(); }} aria-label="Som" className="rounded-full bg-card px-3 py-1 text-xs font-bold">{sound ? "🔊 Som" : "🔇 Mudo"}</button>
         {games.length > 0 && (
           <button onClick={() => { clearGames(); setGames([]); }} className="text-xs font-bold text-destructive">Apagar todos</button>
         )}
@@ -371,7 +432,7 @@ function Checker() {
         const { hits, matched } = drawn.length ? countHits(g.numbers, drawn) : { hits: 0, matched: [] as number[] };
         const matchedSet = new Set(matched);
         return (
-          <article key={g.id} className="shadow-card rounded-2xl border bg-card p-4">
+          <article key={g.id} className={`shadow-card rounded-2xl bg-card p-4 ${r && !r.error && hits >= (MIN_PRIZE[g.lottery] ?? 99) ? "border-2 border-gold" : "border"}`}>
             <div className="mb-2 flex items-start justify-between gap-2">
               <div>
                 <h3 className="text-sm font-bold">{l.name}</h3>
