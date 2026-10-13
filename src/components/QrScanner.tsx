@@ -67,12 +67,9 @@ export default function QrScannerModal({ onScan, onClose }: { onScan: (text: str
   const toggleTorch = async () => {
     const s = scannerRef.current;
     if (!s) return;
-    const next = !torch;
     try {
-      await s.turnTorchOn();
-      if (!next) await s.turnTorchOff();
-      else setTorch(true);
-      if (!next) setTorch(false);
+      await s.toggleTorch();
+      setTorch((t) => !t);
     } catch { /* silent */ }
   };
 
