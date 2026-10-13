@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import QrScanner from "qr-scanner";
-// @ts-expect-error Vite ?url import
 import workerUrl from "qr-scanner/qr-scanner-worker.min.js?url";
 
 QrScanner.WORKER_PATH = workerUrl;
@@ -68,7 +67,8 @@ export default function QrScannerModal({ onScan, onClose }: { onScan: (text: str
     const s = scannerRef.current;
     if (!s) return;
     try {
-      await s.toggleTorch();
+      if (torch) await s.turnTorchOff();
+      else await s.turnTorchOn();
       setTorch((t) => !t);
     } catch { /* silent */ }
   };
