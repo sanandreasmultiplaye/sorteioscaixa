@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import QrScanner from "qr-scanner";
-import workerUrl from "qr-scanner/qr-scanner-worker.min.js?url";
-
-QrScanner.WORKER_PATH = workerUrl;
 
 function beep() {
   try {
