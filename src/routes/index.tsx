@@ -1,12 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { ClientOnly } from "@tanstack/react-router";
 import { LOTTERIES, getLottery, fmt, type LotteryId, type Lottery } from "@/lib/lotteries";
 import { generateGame, type Game, type Method } from "@/lib/generator";
 import { getResults, getResultByConcurso, type LotteryResult } from "@/lib/results.functions";
 import { loadGames, saveGames, removeGame, clearGames, countHits, type SavedGame } from "@/lib/tickets";
 import { playCoins, soundEnabled, setSoundEnabled, MIN_PRIZE } from "@/lib/coin-sound";
 import { pushSupported, loadPrefs, enablePush, updatePrefs, disablePush, currentSubscription, ASKED, type PushPrefs } from "@/lib/push-client";
+import { parseTicketQr, type ParsedTicket } from "@/lib/qr-parse";
+
+const QrScannerModal = lazy(() => import("@/components/QrScanner"));
 
 export const Route = createFileRoute("/")({
   head: () => ({
