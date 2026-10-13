@@ -1,12 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { ClientOnly } from "@tanstack/react-router";
 import { LOTTERIES, getLottery, fmt, type LotteryId, type Lottery } from "@/lib/lotteries";
 import { generateGame, type Game, type Method } from "@/lib/generator";
 import { getResults, getResultByConcurso, type LotteryResult } from "@/lib/results.functions";
 import { loadGames, saveGames, removeGame, clearGames, countHits, type SavedGame } from "@/lib/tickets";
 import { playCoins, soundEnabled, setSoundEnabled, MIN_PRIZE } from "@/lib/coin-sound";
 import { pushSupported, loadPrefs, enablePush, updatePrefs, disablePush, currentSubscription, ASKED, type PushPrefs } from "@/lib/push-client";
+import { parseTicketQr, type ParsedTicket } from "@/lib/qr-parse";
+
+const QrScannerModal = lazy(() => import("@/components/QrScanner"));
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -494,6 +498,9 @@ function Checker() {
   const q = useQuery(resultsQuery);
   const [sound, setSound] = useState(true);
   const played = useRef(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanned, setScanned] = useState<ParsedTicket | null>(null);
+  const [scanMsg, setScanMsg] = useState("");
   useEffect(() => { setSound(soundEnabled()); }, []);
   useEffect(() => {
     if (played.current || !soundEnabled()) return;
@@ -533,11 +540,74 @@ function Checker() {
     setConc("");
   };
 
+  const onScanned = (text: string) => {
+    setScanning(false);
+    const p = parseTicketQr(text);
+    if (!p.lottery || !p.numbers.length) {
+      setScanMsg("Não consegui identificar a aposta nesse QR Code. Tente aproximar mais a câmera ou adicione o jogo manualmente abaixo.");
+      setScanned(null);
+      return;
+    }
+    setScanMsg("");
+    setScanned(p);
+  };
+
+  const confirmScanned = () => {
+    if (!scanned?.lottery) return;
+    setGames(saveGames([{
+      lottery: scanned.lottery,
+      numbers: [...scanned.numbers].sort((a, b) => a - b),
+      ...(scanned.concurso ? { concurso: scanned.concurso } : {}),
+    }]));
+    setScanned(null);
+  };
+
   const resultFor = (g: SavedGame): LotteryResult | undefined =>
     g.concurso ? byConcurso[`${g.lottery}-${g.concurso}`] : q.data?.find((r) => r.id === g.lottery);
 
   return (
     <div className="space-y-3">
+      <button
+        onClick={() => { setScanMsg(""); setScanning(true); }}
+        className="shadow-card flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary font-display text-base font-bold text-primary-foreground"
+      >
+        📷 Escanear comprovante (QR Code)
+      </button>
+
+      {scanMsg && (
+        <p className="rounded-2xl border border-destructive/40 bg-card p-3 text-xs font-bold text-destructive">{scanMsg}</p>
+      )}
+
+      {scanned && scanned.lottery && (
+        <section className="shadow-card space-y-3 rounded-2xl border-2 border-primary bg-card p-4">
+          <h2 className="text-sm font-bold">🎫 Aposta identificada!</h2>
+          <p className="text-xs text-muted-foreground">
+            {getLottery(scanned.lottery).name}
+            {scanned.concurso ? ` • Concurso ${scanned.concurso}` : " • Concurso não identificado (será conferido com o último resultado)"}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {scanned.numbers.map((n, i) => (
+              <span key={i} className="ball inline-grid h-9 w-9 place-items-center rounded-full text-xs font-bold">
+                {fmt(n, getLottery(scanned.lottery!).pad)}
+              </span>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setScanned(null)} className="h-12 rounded-xl border font-bold">Descartar</button>
+            <button onClick={confirmScanned} className="h-12 rounded-xl bg-primary font-bold text-primary-foreground">✅ Salvar e conferir</button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Confira se os números batem com o seu bilhete antes de salvar.</p>
+        </section>
+      )}
+
+      {scanning && (
+        <ClientOnly fallback={null}>
+          <Suspense fallback={null}>
+            <QrScannerModal onScan={onScanned} onClose={() => setScanning(false)} />
+          </Suspense>
+        </ClientOnly>
+      )}
+
       <section className="space-y-2 rounded-2xl border bg-card p-4">
         <h2 className="text-sm font-bold">Adicionar jogo manualmente</h2>
         <select value={lot} onChange={(e) => setLot(e.target.value as LotteryId)} className="h-12 w-full rounded-xl border bg-background px-3 text-sm font-bold">

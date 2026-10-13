@@ -115,6 +115,14 @@
   animation: pop 0.35s ease-out both;
 }
 
+@keyframes scanline {
+  0%, 100% { top: 0.5rem; }
+  50% { top: calc(100% - 0.5rem); }
+}
+@utility animate-scanline {
+  animation: scanline 2.2s ease-in-out infinite;
+}
+
 @layer base {
   * { border-color: var(--color-border); -webkit-tap-highlight-color: transparent; }
   body {
