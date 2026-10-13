@@ -64,11 +64,11 @@ export default function QrScannerModal({ onScan, onClose }: { onScan: (text: str
   }, []);
 
   const toggleTorch = async () => {
-    const s = scannerRef.current;
-    if (!s) return;
+    const video = videoRef.current;
+    const track = video?.srcObject instanceof MediaStream ? video.srcObject.getVideoTracks()[0] : null;
+    if (!track) return;
     try {
-      if (torch) await s.turnTorchOff();
-      else await s.turnTorchOn();
+      await track.applyConstraints({ advanced: [{ torch: !torch } as MediaTrackConstraintSet] });
       setTorch((t) => !t);
     } catch { /* silent */ }
   };
