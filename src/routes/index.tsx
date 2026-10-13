@@ -540,6 +540,28 @@ function Checker() {
     setConc("");
   };
 
+  const onScanned = (text: string) => {
+    setScanning(false);
+    const p = parseTicketQr(text);
+    if (!p.lottery || !p.numbers.length) {
+      setScanMsg("Não consegui identificar a aposta nesse QR Code. Tente aproximar mais a câmera ou adicione o jogo manualmente abaixo.");
+      setScanned(null);
+      return;
+    }
+    setScanMsg("");
+    setScanned(p);
+  };
+
+  const confirmScanned = () => {
+    if (!scanned?.lottery) return;
+    setGames(saveGames([{
+      lottery: scanned.lottery,
+      numbers: [...scanned.numbers].sort((a, b) => a - b),
+      ...(scanned.concurso ? { concurso: scanned.concurso } : {}),
+    }]));
+    setScanned(null);
+  };
+
   const resultFor = (g: SavedGame): LotteryResult | undefined =>
     g.concurso ? byConcurso[`${g.lottery}-${g.concurso}`] : q.data?.find((r) => r.id === g.lottery);
 
