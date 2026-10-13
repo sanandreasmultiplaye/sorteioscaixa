@@ -498,6 +498,9 @@ function Checker() {
   const q = useQuery(resultsQuery);
   const [sound, setSound] = useState(true);
   const played = useRef(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanned, setScanned] = useState<ParsedTicket | null>(null);
+  const [scanMsg, setScanMsg] = useState("");
   useEffect(() => { setSound(soundEnabled()); }, []);
   useEffect(() => {
     if (played.current || !soundEnabled()) return;
